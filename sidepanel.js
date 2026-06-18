@@ -73,6 +73,7 @@ const chromeApi = globalThis.chrome;
 let settings = structuredCloneSettings(DEFAULT_SETTINGS);
 let activeTabId = null;
 let sending = false;
+let pendingRenderTimer = 0;
 
 const els = {
   pageStatus: document.querySelector("#pageStatus"),
@@ -368,6 +369,7 @@ function getSession(tab) {
     existing.title = tab.title || "";
     existing.history = [];
     existing.pendingAssistant = "";
+    existing.pendingReasoning = "";
     existing.pageContext = null;
     existing.pageContextUrl = "";
     existing.notices = ["URL 已变化，已自动开始新会话。"];
@@ -385,6 +387,7 @@ function getSession(tab) {
     title: tab.title || "",
     history: [],
     pendingAssistant: "",
+    pendingReasoning: "",
     pageContext: null,
     pageContextUrl: "",
     notices: []
@@ -402,6 +405,7 @@ function handleUrlChange(tabId, url) {
   session.url = url;
   session.history = [];
   session.pendingAssistant = "";
+  session.pendingReasoning = "";
   session.pageContext = null;
   session.pageContextUrl = "";
   session.notices = ["URL 已变化，已自动开始新会话。"];
@@ -420,6 +424,7 @@ function currentSession() {
     title: "",
     history: [],
     pendingAssistant: "",
+    pendingReasoning: "",
     pageContext: null,
     pageContextUrl: "",
     notices: []
@@ -460,6 +465,7 @@ async function sendMessage() {
   const session = currentSession();
   session.history.push({ role: "user", content: userText });
   session.pendingAssistant = "正在思考...";
+  session.pendingReasoning = "";
   els.messageInput.value = "";
   renderMessages(session);
 
@@ -471,13 +477,23 @@ async function sendMessage() {
     }
 
     const messages = buildRequestMessages(session);
-    const answer = await callProvider(provider, messages);
-    session.history.push({ role: "assistant", content: answer });
+    const result = await callProvider(provider, messages, ({ content, reasoning }) => {
+      session.pendingAssistant = content || "正在思考...";
+      session.pendingReasoning = reasoning || "";
+      scheduleRenderMessages(session);
+    });
+    session.history.push({
+      role: "assistant",
+      content: result.content,
+      reasoning: result.reasoning
+    });
     session.pendingAssistant = "";
+    session.pendingReasoning = "";
     renderMessages(session);
     updateContextStatus();
   } catch (error) {
     session.pendingAssistant = "";
+    session.pendingReasoning = "";
     renderMessages(session);
     showError(error);
   } finally {
@@ -508,42 +524,45 @@ function buildRequestMessages(session) {
     });
   }
 
-  const trimmedHistory = session.history.slice(-settings.contextMessageLimit);
+  const trimmedHistory = session.history.slice(-settings.contextMessageLimit).map((item) => ({
+    role: item.role,
+    content: item.content
+  }));
   return messages.concat(trimmedHistory);
 }
 
-async function callProvider(providerKey, messages) {
+async function callProvider(providerKey, messages, onDelta) {
   if (providerKey === "custom") {
-    return callCustomProvider(messages);
+    return callCustomProvider(messages, onDelta);
   }
 
   if (providerKey === "siliconflow") {
-    return callSiliconFlow(messages);
+    return callSiliconFlow(messages, onDelta);
   }
 
-  return callDeepSeek(messages);
+  return callDeepSeek(messages, onDelta);
 }
 
-async function callDeepSeek(messages) {
+async function callDeepSeek(messages, onDelta) {
   const body = {
     model: settings.models.deepseek,
     messages,
     thinking: { type: settings.thinkingEnabled ? "enabled" : "disabled" },
-    stream: false
+    stream: true
   };
 
   if (settings.thinkingEnabled) {
     body.reasoning_effort = "high";
   }
 
-  return requestChatCompletion("deepseek", body);
+  return requestChatCompletion("deepseek", body, onDelta);
 }
 
-async function callSiliconFlow(messages) {
+async function callSiliconFlow(messages, onDelta) {
   const body = {
     model: settings.models.siliconflow,
     messages,
-    stream: false
+    stream: true
   };
 
   if (settings.thinkingEnabled) {
@@ -553,10 +572,10 @@ async function callSiliconFlow(messages) {
     }
   }
 
-  return requestChatCompletion("siliconflow", body);
+  return requestChatCompletion("siliconflow", body, onDelta);
 }
 
-async function callCustomProvider(messages) {
+async function callCustomProvider(messages, onDelta) {
   if (!settings.customProvider.baseUrl) {
     throw new Error("请先为自定义供应商填写 Base URL。");
   }
@@ -568,17 +587,17 @@ async function callCustomProvider(messages) {
   const body = {
     model: settings.models.custom,
     messages,
-    stream: false
+    stream: true
   };
 
   if (settings.thinkingEnabled) {
     body.enable_thinking = true;
   }
 
-  return requestChatCompletion("custom", body);
+  return requestChatCompletion("custom", body, onDelta);
 }
 
-async function requestChatCompletion(providerKey, body) {
+async function requestChatCompletion(providerKey, body, onDelta) {
   const endpoint = getProviderEndpoint(providerKey);
   if (providerKey === "custom") {
     await ensureEndpointPermission(endpoint);
@@ -597,19 +616,159 @@ async function requestChatCompletion(providerKey, body) {
     body: JSON.stringify(body)
   });
 
-  const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
     const traceId = response.headers.get("x-siliconcloud-trace-id");
     const message = payload?.error?.message || payload?.message || `${getProviderLabel(providerKey)} 请求失败：HTTP ${response.status}`;
     throw new Error(traceId ? `${message}（trace: ${traceId}）` : message);
   }
 
+  if (body.stream && response.body) {
+    const result = await readStreamingCompletion(response, providerKey, onDelta);
+    if (!result.content) {
+      throw new Error(`${getProviderLabel(providerKey)} 没有返回可显示的回答。`);
+    }
+    return result;
+  }
+
+  const payload = await response.json().catch(() => ({}));
   const content = payload?.choices?.[0]?.message?.content;
   if (!content) {
     throw new Error(`${getProviderLabel(providerKey)} 没有返回可显示的回答。`);
   }
 
-  return content;
+  return {
+    content,
+    reasoning: extractReasoning(payload?.choices?.[0]?.message) || ""
+  };
+}
+
+async function readStreamingCompletion(response, providerKey, onDelta) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let content = "";
+  let reasoning = "";
+  let rawText = "";
+  let sawSseData = false;
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) {
+      break;
+    }
+
+    const chunk = decoder.decode(value, { stream: true });
+    rawText += chunk;
+    buffer += chunk;
+    const lines = buffer.split(/\r?\n/);
+    buffer = lines.pop() || "";
+
+    for (const line of lines) {
+      if (line.trim().startsWith("data:")) {
+        sawSseData = true;
+      }
+      const result = consumeSseLine(line, providerKey);
+      if (result.content) {
+        content += result.content;
+      }
+      if (result.reasoning) {
+        reasoning += result.reasoning;
+      }
+      if (result.content || result.reasoning) {
+        onDelta?.({ content, reasoning });
+      }
+
+      if (result.done) {
+        await reader.cancel().catch(() => {});
+        return { content, reasoning };
+      }
+    }
+  }
+
+  const finalChunk = decoder.decode();
+  rawText += finalChunk;
+  buffer += finalChunk;
+  if (buffer.trim()) {
+    for (const line of buffer.split(/\r?\n/)) {
+      if (line.trim().startsWith("data:")) {
+        sawSseData = true;
+      }
+      const result = consumeSseLine(line, providerKey);
+      if (result.content) {
+        content += result.content;
+      }
+      if (result.reasoning) {
+        reasoning += result.reasoning;
+      }
+      if (result.content || result.reasoning) {
+        onDelta?.({ content, reasoning });
+      }
+      if (result.done) {
+        return { content, reasoning };
+      }
+    }
+  }
+
+  if (!sawSseData && rawText.trim()) {
+    try {
+      const payload = JSON.parse(rawText);
+      const message = payload?.choices?.[0]?.message;
+      return {
+        content: message?.content || "",
+        reasoning: extractReasoning(message) || ""
+      };
+    } catch (error) {
+      return { content: "", reasoning: "" };
+    }
+  }
+
+  return { content, reasoning };
+}
+
+function consumeSseLine(line, providerKey) {
+  const trimmed = line.trim();
+  if (!trimmed || trimmed.startsWith(":")) {
+    return { content: "", reasoning: "", done: false };
+  }
+
+  if (!trimmed.startsWith("data:")) {
+    return { content: "", reasoning: "", done: false };
+  }
+
+  const data = trimmed.slice(5).trim();
+  if (!data || data === "[DONE]") {
+    return { content: "", reasoning: "", done: data === "[DONE]" };
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(data);
+  } catch (error) {
+    return { content: "", reasoning: "", done: false };
+  }
+
+  if (payload?.error) {
+    const message = payload.error.message || `${getProviderLabel(providerKey)} 流式响应出错。`;
+    throw new Error(message);
+  }
+
+  const choice = payload?.choices?.[0];
+  const content = choice?.delta?.content || choice?.message?.content || "";
+  const reasoning = extractReasoning(choice?.delta) || extractReasoning(choice?.message) || "";
+  return {
+    content,
+    reasoning,
+    done: choice?.finish_reason === "stop" || choice?.finish_reason === "length"
+  };
+}
+
+function extractReasoning(messageLike) {
+  if (!messageLike) {
+    return "";
+  }
+
+  return messageLike.reasoning_content || messageLike.reasoning || messageLike.thinking || "";
 }
 
 async function refreshPageContext(showNotice) {
@@ -702,12 +861,27 @@ function renderMessages(session) {
   }
 
   for (const item of session.history) {
-    addMessage(item.role, item.content);
+    addMessage(item.role, item.content, { reasoning: item.reasoning });
   }
 
   if (session.pendingAssistant) {
-    addMessage("assistant", session.pendingAssistant, { markdown: false });
+    addMessage("assistant", session.pendingAssistant, {
+      markdown: false,
+      reasoning: session.pendingReasoning,
+      reasoningPending: Boolean(session.pendingReasoning)
+    });
   }
+}
+
+function scheduleRenderMessages(session) {
+  if (pendingRenderTimer) {
+    return;
+  }
+
+  pendingRenderTimer = setTimeout(() => {
+    pendingRenderTimer = 0;
+    renderMessages(session);
+  }, 80);
 }
 
 function addSystemMessage(text) {
@@ -720,10 +894,29 @@ function addMessage(role, content, options = {}) {
   const bubble = document.createElement("div");
   bubble.className = "bubble";
   renderBubbleContent(bubble, role, content, options.markdown);
+  if (role === "assistant" && options.reasoning) {
+    item.append(createReasoningPanel(options.reasoning, options.reasoningPending));
+  }
   item.append(bubble);
   els.messages.append(item);
   els.messages.scrollTop = els.messages.scrollHeight;
   return item;
+}
+
+function createReasoningPanel(reasoning, pending = false) {
+  const details = document.createElement("details");
+  details.className = "reasoning-panel";
+  details.open = pending;
+
+  const summary = document.createElement("summary");
+  summary.textContent = pending ? "思考中" : "思考过程";
+
+  const body = document.createElement("div");
+  body.className = "reasoning-content";
+  body.textContent = reasoning;
+
+  details.append(summary, body);
+  return details;
 }
 
 function renderBubbleContent(bubble, role, content, markdownOverride) {

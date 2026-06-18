@@ -10,6 +10,9 @@ Chrome Manifest V3 side panel extension for chatting with DeepSeek about the cur
 - Stores each provider's API Key locally with `chrome.storage.local`.
 - Saves manually entered model IDs as local suggestions for that provider.
 - Renders assistant replies as a safe Markdown subset.
+- Streams assistant replies as plain text while generating, then renders Markdown after completion.
+- Shows provider-returned reasoning content in a collapsible section when available.
+- Keeps reasoning content out of future chat context; only assistant `content` is sent back to the model.
 - Lets the user edit the system prompt.
 - Reads the active page only when the "读取当前网页" switch is on.
 - Requests permission for the current website the first time page reading is used there.
