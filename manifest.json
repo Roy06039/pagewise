@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "Pagewise DeepSeek Sidebar",
+  "description": "A local-first Chrome side panel for chatting with DeepSeek about the current page.",
+  "version": "0.1.0",
+  "minimum_chrome_version": "114",
+  "permissions": [
+    "activeTab",
+    "permissions",
+    "sidePanel",
+    "scripting",
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://api.deepseek.com/*",
+    "https://api.siliconflow.cn/*"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "action": {
+    "default_title": "Open Pagewise"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  }
+}

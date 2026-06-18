@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Pagewise</title>
+    <link rel="stylesheet" href="sidepanel.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <h1>Pagewise</h1>
+          <p id="pageStatus">等待连接当前标签页</p>
+        </div>
+        <button class="icon-button" id="settingsButton" type="button" aria-label="设置" title="设置">
+          <span aria-hidden="true">⚙</span>
+        </button>
+      </header>
+
+      <section class="context-strip" aria-label="上下文控制">
+        <label class="switch-row">
+          <input id="pageContextToggle" type="checkbox">
+          <span class="switch-visual" aria-hidden="true"></span>
+          <span>读取当前网页</span>
+        </label>
+        <button id="refreshPageButton" type="button">重新读取</button>
+        <button id="newChatButton" type="button">新会话</button>
+      </section>
+
+      <section class="settings-panel" id="settingsPanel" hidden>
+        <label>
+          <span>供应商</span>
+          <select id="providerSelect">
+            <option value="deepseek">DeepSeek</option>
+            <option value="siliconflow">SiliconFlow</option>
+            <option value="custom">自定义</option>
+          </select>
+        </label>
+
+        <div class="custom-provider-fields" id="customProviderFields" hidden>
+          <label>
+            <span>自定义供应商名称</span>
+            <input id="customProviderNameInput" type="text" autocomplete="off" spellcheck="false" placeholder="OpenAI-compatible">
+          </label>
+
+          <label>
+            <span>Base URL</span>
+            <input id="customBaseUrlInput" type="url" autocomplete="off" spellcheck="false" placeholder="https://api.example.com/v1">
+          </label>
+
+          <label>
+            <span>Chat path</span>
+            <input id="customChatPathInput" type="text" autocomplete="off" spellcheck="false" placeholder="/chat/completions">
+          </label>
+        </div>
+
+        <label>
+          <span id="apiKeyLabel">DeepSeek API Key</span>
+          <input id="apiKeyInput" type="password" autocomplete="off" spellcheck="false" placeholder="sk-...">
+        </label>
+
+        <label>
+          <span>模型 ID</span>
+          <input id="modelInput" list="modelSuggestions" type="text" autocomplete="off" spellcheck="false">
+          <datalist id="modelSuggestions"></datalist>
+        </label>
+
+        <label class="switch-row compact">
+          <input id="thinkingToggle" type="checkbox">
+          <span class="switch-visual" aria-hidden="true"></span>
+          <span>思考模式</span>
+        </label>
+
+        <label>
+          <span>保留最近几条消息作为上下文</span>
+          <input id="contextLimitInput" type="number" min="2" max="24" step="1">
+        </label>
+
+        <label>
+          <span>系统提示词</span>
+          <textarea id="systemPromptInput" rows="5" spellcheck="false"></textarea>
+        </label>
+
+        <div class="settings-actions">
+          <button id="saveSettingsButton" type="button">保存设置</button>
+          <button id="clearKeyButton" type="button">清除 Key</button>
+        </div>
+        <p class="privacy-note">API Key 仅保存在本机 Chrome 本地存储中，用于直接请求所选供应商。</p>
+      </section>
+
+      <section class="status-line" id="contextStatus">网页上下文关闭。只会发送当前对话。</section>
+
+      <section class="messages" id="messages" aria-live="polite">
+        <article class="message assistant">
+          <div class="bubble">
+            你好，我可以帮你阅读当前网页。打开“读取当前网页”后提问，我会把本页内容作为上下文；关闭后只按当前对话回答。
+          </div>
+        </article>
+      </section>
+
+      <form class="composer" id="chatForm">
+        <textarea id="messageInput" rows="2" placeholder="针对当前网页提问..." autocomplete="off"></textarea>
+        <button id="sendButton" type="submit">发送</button>
+      </form>
+    </main>
+
+    <script src="sidepanel.js"></script>
+  </body>
+</html>

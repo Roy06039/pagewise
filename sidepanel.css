@@ -1,0 +1,428 @@
+:root {
+  --bg: #f6f4ee;
+  --panel: #fffdf7;
+  --ink: #191714;
+  --muted: #706b61;
+  --line: #d8d0c1;
+  --accent: #0f766e;
+  --accent-strong: #0b5f59;
+  --danger: #a33b2f;
+  --user: #102b3f;
+  --assistant: #fffdf7;
+  --shadow: 0 14px 34px rgba(42, 35, 24, 0.12);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  color: var(--ink);
+  background:
+    linear-gradient(135deg, rgba(15, 118, 110, 0.08), transparent 38%),
+    repeating-linear-gradient(0deg, rgba(25, 23, 20, 0.025), rgba(25, 23, 20, 0.025) 1px, transparent 1px, transparent 5px),
+    var(--bg);
+  font-family: "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--ink);
+  background: var(--panel);
+  cursor: pointer;
+}
+
+button:hover {
+  border-color: var(--accent);
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-rows: auto auto auto auto 1fr auto;
+  height: 100vh;
+  min-height: 520px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 16px 12px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(255, 253, 247, 0.78);
+  backdrop-filter: blur(18px);
+}
+
+h1 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.05;
+  letter-spacing: 0;
+}
+
+.topbar p {
+  margin: 5px 0 0;
+  max-width: 250px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.icon-button {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+}
+
+.context-strip {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(246, 244, 238, 0.82);
+}
+
+.context-strip button {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.switch-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.switch-row input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.switch-visual {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  flex: 0 0 36px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #e6dfd2;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.switch-visual::after {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--panel);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  content: "";
+  transition: transform 140ms ease;
+}
+
+.switch-row input:checked + .switch-visual {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.switch-row input:checked + .switch-visual::after {
+  transform: translateX(16px);
+}
+
+.settings-panel {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(255, 253, 247, 0.94);
+  box-shadow: var(--shadow);
+}
+
+.settings-panel[hidden] {
+  display: none;
+}
+
+.settings-panel label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.settings-panel label.compact {
+  display: inline-flex;
+}
+
+.custom-provider-fields {
+  display: grid;
+  gap: 10px;
+}
+
+.custom-provider-fields[hidden] {
+  display: none;
+}
+
+.settings-panel input,
+.settings-panel select,
+.settings-panel textarea,
+.composer textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--ink);
+  background: #fffefa;
+  outline: none;
+}
+
+.settings-panel input,
+.settings-panel select {
+  min-height: 34px;
+  padding: 7px 9px;
+}
+
+.settings-panel textarea {
+  min-height: 98px;
+  padding: 8px 9px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.settings-panel input:focus,
+.settings-panel select:focus,
+.settings-panel textarea:focus,
+.composer textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.14);
+}
+
+.settings-panel .switch-row input,
+.context-strip .switch-row input {
+  width: 1px;
+  height: 1px;
+}
+
+.settings-actions {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.settings-actions button,
+.composer button {
+  min-height: 36px;
+  padding: 0 12px;
+}
+
+#saveSettingsButton,
+.composer button {
+  border-color: var(--accent);
+  color: #fff;
+  background: var(--accent);
+}
+
+#saveSettingsButton:hover,
+.composer button:hover {
+  background: var(--accent-strong);
+}
+
+.privacy-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.status-line {
+  padding: 8px 12px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-line.error {
+  color: var(--danger);
+}
+
+.messages {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  padding: 14px 12px;
+  overflow-y: auto;
+}
+
+.message {
+  display: flex;
+}
+
+.message.user {
+  justify-content: flex-end;
+}
+
+.bubble {
+  max-width: min(88%, 560px);
+  padding: 10px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.56;
+  word-break: break-word;
+}
+
+.bubble.plain {
+  white-space: pre-wrap;
+}
+
+.message.user .bubble {
+  border-color: var(--user);
+  color: #fff;
+  background: var(--user);
+}
+
+.message.assistant .bubble {
+  background: var(--assistant);
+}
+
+.message.system .bubble {
+  max-width: 100%;
+  color: var(--muted);
+  background: rgba(255, 253, 247, 0.68);
+  font-size: 12px;
+}
+
+.bubble.markdown {
+  width: min(88%, 560px);
+}
+
+.bubble.markdown > :first-child {
+  margin-top: 0;
+}
+
+.bubble.markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.bubble.markdown p,
+.bubble.markdown ul,
+.bubble.markdown ol,
+.bubble.markdown blockquote,
+.bubble.markdown pre {
+  margin: 0 0 10px;
+}
+
+.bubble.markdown h1,
+.bubble.markdown h2,
+.bubble.markdown h3 {
+  margin: 4px 0 8px;
+  line-height: 1.25;
+}
+
+.bubble.markdown h1 {
+  font-size: 18px;
+}
+
+.bubble.markdown h2 {
+  font-size: 16px;
+}
+
+.bubble.markdown h3 {
+  font-size: 15px;
+}
+
+.bubble.markdown ul,
+.bubble.markdown ol {
+  padding-left: 20px;
+}
+
+.bubble.markdown li + li {
+  margin-top: 4px;
+}
+
+.bubble.markdown blockquote {
+  padding-left: 10px;
+  border-left: 3px solid var(--accent);
+  color: var(--muted);
+}
+
+.bubble.markdown pre {
+  overflow-x: auto;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #f0ebe1;
+}
+
+.bubble.markdown code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: #f0ebe1;
+  font-family: "Cascadia Code", "Consolas", monospace;
+  font-size: 0.92em;
+}
+
+.bubble.markdown pre code {
+  padding: 0;
+  background: transparent;
+}
+
+.bubble.markdown a {
+  color: var(--accent-strong);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+.composer {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 9px;
+  align-items: end;
+  padding: 12px;
+  border-top: 1px solid var(--line);
+  background: rgba(255, 253, 247, 0.88);
+}
+
+.composer textarea {
+  height: 46px;
+  min-height: 44px;
+  max-height: 160px;
+  resize: vertical;
+  padding: 10px;
+  line-height: 1.45;
+}
+
+.composer button {
+  align-self: end;
+  min-width: 64px;
+}
