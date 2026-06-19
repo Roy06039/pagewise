@@ -63,10 +63,13 @@ const DEFAULT_SETTINGS = {
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
   thinkingEnabled: false,
   includePageContext: false,
-  contextMessageLimit: 8
+  contextMessageLimit: 8,
+  pageContextCharLimit: 12000
 };
 
-const MAX_PAGE_CONTEXT_CHARS = 12000;
+const PAGE_CONTEXT_LIMIT_PRESETS = [12000, 24000, 48000];
+const MIN_PAGE_CONTEXT_CHARS = 4000;
+const MAX_PAGE_CONTEXT_CHARS = 80000;
 const sessions = new Map();
 const chromeApi = globalThis.chrome;
 
@@ -90,6 +93,9 @@ const els = {
   modelSuggestions: document.querySelector("#modelSuggestions"),
   thinkingToggle: document.querySelector("#thinkingToggle"),
   contextLimitInput: document.querySelector("#contextLimitInput"),
+  pageContextLimitPreset: document.querySelector("#pageContextLimitPreset"),
+  pageContextLimitCustomRow: document.querySelector("#pageContextLimitCustomRow"),
+  pageContextLimitInput: document.querySelector("#pageContextLimitInput"),
   systemPromptInput: document.querySelector("#systemPromptInput"),
   saveSettingsButton: document.querySelector("#saveSettingsButton"),
   clearKeyButton: document.querySelector("#clearKeyButton"),
@@ -127,6 +133,7 @@ function bindEvents() {
 
   els.saveSettingsButton.addEventListener("click", saveSettingsFromForm);
   els.clearKeyButton.addEventListener("click", clearApiKey);
+  els.pageContextLimitPreset.addEventListener("change", () => updatePageContextLimitFields(true));
 
   els.pageContextToggle.addEventListener("change", async () => {
     settings.includePageContext = els.pageContextToggle.checked;
@@ -217,6 +224,7 @@ function normalizeSettings(value) {
 
   const provider = getProviderKey(value.provider);
   const limit = Number.parseInt(value.contextMessageLimit, 10);
+  const pageContextLimit = Number.parseInt(value.pageContextCharLimit, 10);
   const systemPrompt = String(value.systemPrompt || "").trim() || DEFAULT_SYSTEM_PROMPT;
 
   return {
@@ -244,7 +252,10 @@ function normalizeSettings(value) {
     systemPrompt,
     thinkingEnabled: Boolean(value.thinkingEnabled),
     includePageContext: Boolean(value.includePageContext),
-    contextMessageLimit: Number.isFinite(limit) ? clamp(limit, 2, 24) : DEFAULT_SETTINGS.contextMessageLimit
+    contextMessageLimit: Number.isFinite(limit) ? clamp(limit, 2, 24) : DEFAULT_SETTINGS.contextMessageLimit,
+    pageContextCharLimit: Number.isFinite(pageContextLimit)
+      ? clamp(pageContextLimit, MIN_PAGE_CONTEXT_CHARS, MAX_PAGE_CONTEXT_CHARS)
+      : DEFAULT_SETTINGS.pageContextCharLimit
   };
 }
 
@@ -268,9 +279,28 @@ function updateSettingsForm() {
   els.customChatPathInput.value = settings.customProvider.chatPath;
   els.thinkingToggle.checked = settings.thinkingEnabled;
   els.contextLimitInput.value = String(settings.contextMessageLimit);
+  els.pageContextLimitInput.value = String(settings.pageContextCharLimit);
   els.systemPromptInput.value = settings.systemPrompt;
   els.pageContextToggle.checked = settings.includePageContext;
   updateProviderFields();
+  updatePageContextLimitFields();
+}
+
+function updatePageContextLimitFields(fromPresetChange = false) {
+  if (fromPresetChange) {
+    const isCustomPreset = els.pageContextLimitPreset.value === "custom";
+    els.pageContextLimitCustomRow.hidden = !isCustomPreset;
+    if (!isCustomPreset) {
+      els.pageContextLimitInput.value = els.pageContextLimitPreset.value;
+    }
+    return;
+  }
+
+  const limit = Number.parseInt(els.pageContextLimitInput.value, 10);
+  const selectedPreset = PAGE_CONTEXT_LIMIT_PRESETS.includes(limit) ? String(limit) : "custom";
+  els.pageContextLimitPreset.value = selectedPreset;
+  const isCustom = els.pageContextLimitPreset.value === "custom";
+  els.pageContextLimitCustomRow.hidden = !isCustom;
 }
 
 function updateProviderFields() {
@@ -302,7 +332,8 @@ async function saveSettingsFromForm() {
       systemPrompt: els.systemPromptInput.value,
       thinkingEnabled: els.thinkingToggle.checked,
       includePageContext: els.pageContextToggle.checked,
-      contextMessageLimit: els.contextLimitInput.value
+      contextMessageLimit: els.contextLimitInput.value,
+      pageContextCharLimit: getPageContextLimitInputValue()
     });
 
     if (settings.provider === "custom" && els.customBaseUrlInput.value.trim() && !settings.customProvider.baseUrl) {
@@ -330,6 +361,14 @@ function captureCurrentProviderFormValues() {
     baseUrl: normalizeBaseUrl(els.customBaseUrlInput.value),
     chatPath: normalizeChatPath(els.customChatPathInput.value)
   };
+}
+
+function getPageContextLimitInputValue() {
+  if (els.pageContextLimitPreset.value !== "custom") {
+    return els.pageContextLimitPreset.value;
+  }
+
+  return els.pageContextLimitInput.value;
 }
 
 async function clearApiKey() {
@@ -801,7 +840,7 @@ async function refreshPageContext(showNotice) {
     throw new Error("没有从当前网页提取到正文文本。");
   }
 
-  const text = trimText(snapshot.text, MAX_PAGE_CONTEXT_CHARS);
+  const text = trimText(snapshot.text, settings.pageContextCharLimit);
   session.pageContext = {
     ...snapshot,
     text,
@@ -811,31 +850,123 @@ async function refreshPageContext(showNotice) {
   session.pageContextUrl = snapshot.url || session.url;
 
   if (showNotice) {
-    addSystemMessage(`已读取当前网页：约 ${text.length.toLocaleString()} 字符。`);
+    const modalNote = snapshot.dialogText ? "，已优先保留当前弹窗内容" : "";
+    addSystemMessage(`已读取当前网页：约 ${text.length.toLocaleString()} 字符${modalNote}。`);
   }
 
   updateContextStatus();
 }
 
 function extractPageSnapshot() {
+  function normalizeExtractedText(value) {
+    return String(value || "")
+      .replace(/\u00a0/g, " ")
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .replace(/[ \t]{2,}/g, " ")
+      .trim();
+  }
+
+  function getCleanElementText(element) {
+    const clone = element.cloneNode(true);
+    clone.querySelectorAll("table").forEach((table) => {
+      const rows = [...table.querySelectorAll("tr")]
+        .map((row) => [...row.querySelectorAll("th, td")]
+          .map((cell) => normalizeExtractedText(cell.innerText || cell.textContent || ""))
+          .filter(Boolean)
+          .join(" | "))
+        .filter(Boolean);
+      const replacement = document.createElement("pre");
+      replacement.textContent = rows.join("\n");
+      table.replaceWith(replacement);
+    });
+    const removable = clone.querySelectorAll("script, style, noscript, svg, canvas, iframe, video, audio, form, [hidden]");
+    removable.forEach((node) => node.remove());
+    return normalizeExtractedText(clone.innerText || clone.textContent || "");
+  }
+
+  function isElementVisible(element) {
+    const style = globalThis.getComputedStyle(element);
+    if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) {
+      return false;
+    }
+
+    const rect = element.getBoundingClientRect();
+    if (rect.width < 220 || rect.height < 100) {
+      return false;
+    }
+
+    const viewportWidth = globalThis.innerWidth || document.documentElement.clientWidth || 0;
+    const viewportHeight = globalThis.innerHeight || document.documentElement.clientHeight || 0;
+    return rect.bottom > 0 && rect.right > 0 && rect.top < viewportHeight && rect.left < viewportWidth;
+  }
+
+  function looksLikeDialog(element) {
+    const role = String(element.getAttribute("role") || "").toLowerCase();
+    const ariaModal = String(element.getAttribute("aria-modal") || "").toLowerCase();
+    const tagName = element.tagName.toLowerCase();
+    const marker = `${element.id || ""} ${element.className || ""}`.toLowerCase();
+    return (
+      role === "dialog" ||
+      ariaModal === "true" ||
+      tagName === "dialog" ||
+      /\b(modal|dialog|drawer|popover)\b/.test(marker)
+    );
+  }
+
+  function rectArea(element) {
+    const rect = element.getBoundingClientRect();
+    return Math.round(rect.width * rect.height);
+  }
+
+  function getZIndex(element) {
+    const parsed = Number.parseInt(globalThis.getComputedStyle(element).zIndex, 10);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  function getVisibleDialogText() {
+    if (!document.body) {
+      return "";
+    }
+
+    const semanticCandidates = [
+      ...document.querySelectorAll('[role="dialog"], [aria-modal="true"], dialog[open]')
+    ];
+    const classCandidates = [...document.body.querySelectorAll("*")].filter((element) => looksLikeDialog(element));
+    const candidates = [...new Set([...semanticCandidates, ...classCandidates])]
+      .filter(isElementVisible)
+      .map((element) => ({
+        element,
+        text: getCleanElementText(element),
+        area: rectArea(element),
+        zIndex: getZIndex(element)
+      }))
+      .filter((item) => item.text.length >= 40)
+      .sort((a, b) => (b.zIndex - a.zIndex) || (b.area - a.area) || (b.text.length - a.text.length));
+
+    return candidates[0]?.text || "";
+  }
+
   const description = document.querySelector('meta[name="description"], meta[property="og:description"]')?.content || "";
   const selection = String(globalThis.getSelection?.() || "").trim();
+  const dialogText = getVisibleDialogText();
   const root = document.querySelector("article") || document.querySelector("main") || document.body;
-  const clone = root.cloneNode(true);
-  const removable = clone.querySelectorAll("script, style, noscript, svg, canvas, iframe, video, audio, form, nav, footer, aside, [hidden]");
-  removable.forEach((node) => node.remove());
-  const text = (clone.innerText || clone.textContent || "")
-    .replace(/\u00a0/g, " ")
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .replace(/[ \t]{2,}/g, " ")
-    .trim();
+  const pageText = root ? getCleanElementText(root) : "";
+  const text = dialogText
+    ? normalizeExtractedText([
+        "[当前可见弹窗内容]",
+        dialogText,
+        "[当前页面正文]",
+        pageText
+      ].join("\n\n"))
+    : pageText;
 
   return {
     title: document.title,
     url: location.href,
     description: description.trim(),
     selection,
+    dialogText,
     text
   };
 }
@@ -940,6 +1071,7 @@ function renderMarkdownBlocks(source) {
   let paragraph = [];
   let listItems = [];
   let listType = null;
+  let orderedStart = 1;
   let inFence = false;
   let fenceLines = [];
 
@@ -958,6 +1090,9 @@ function renderMarkdownBlocks(source) {
       return;
     }
     const list = document.createElement(listType);
+    if (listType === "ol" && orderedStart !== 1) {
+      list.start = orderedStart;
+    }
     for (const itemText of listItems) {
       const li = document.createElement("li");
       appendInlineMarkdown(li, itemText);
@@ -966,6 +1101,7 @@ function renderMarkdownBlocks(source) {
     nodes.push(list);
     listItems = [];
     listType = null;
+    orderedStart = 1;
   };
 
   const flushCode = () => {
@@ -977,7 +1113,8 @@ function renderMarkdownBlocks(source) {
     fenceLines = [];
   };
 
-  for (const line of lines) {
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
     if (line.trim().startsWith("```")) {
       if (inFence) {
         flushCode();
@@ -1002,6 +1139,15 @@ function renderMarkdownBlocks(source) {
       continue;
     }
 
+    if (isMarkdownTableStart(lines, index)) {
+      flushParagraph();
+      flushList();
+      const tableResult = parseMarkdownTable(lines, index);
+      nodes.push(tableResult.node);
+      index = tableResult.nextIndex - 1;
+      continue;
+    }
+
     const heading = line.match(/^(#{1,3})\s+(.+)$/);
     if (heading) {
       flushParagraph();
@@ -1022,16 +1168,25 @@ function renderMarkdownBlocks(source) {
       continue;
     }
 
-    const unordered = line.match(/^\s*[-*]\s+(.+)$/);
     const ordered = line.match(/^\s*\d+\.\s+(.+)$/);
-    if (unordered || ordered) {
+    if (ordered) {
       flushParagraph();
-      const desiredType = unordered ? "ul" : "ol";
+      flushList();
+      const listResult = parseOrderedList(lines, index);
+      nodes.push(listResult.node);
+      index = listResult.nextIndex - 1;
+      continue;
+    }
+
+    const unordered = line.match(/^\s*[-*]\s+(.+)$/);
+    if (unordered) {
+      flushParagraph();
+      const desiredType = "ul";
       if (listType && listType !== desiredType) {
         flushList();
       }
       listType = desiredType;
-      listItems.push(unordered?.[1] || ordered?.[1] || "");
+      listItems.push(unordered[1] || "");
       continue;
     }
 
@@ -1052,6 +1207,145 @@ function renderMarkdownBlocks(source) {
   }
 
   return nodes;
+}
+
+function parseOrderedList(lines, startIndex) {
+  const firstMatch = lines[startIndex].match(/^\s*(\d+)\.\s+(.+)$/);
+  const list = document.createElement("ol");
+  const startNumber = Number.parseInt(firstMatch?.[1] || "1", 10);
+  if (startNumber !== 1) {
+    list.start = startNumber;
+  }
+
+  let index = startIndex;
+  while (index < lines.length) {
+    const itemMatch = lines[index].match(/^\s*\d+\.\s+(.+)$/);
+    if (!itemMatch) {
+      break;
+    }
+
+    const li = document.createElement("li");
+    const title = document.createElement("p");
+    appendInlineMarkdown(title, itemMatch[1]);
+    li.append(title);
+    index += 1;
+
+    let paragraph = [];
+    const flushItemParagraph = () => {
+      if (!paragraph.length) {
+        return;
+      }
+      const p = document.createElement("p");
+      appendInlineMarkdown(p, paragraph.join(" "));
+      li.append(p);
+      paragraph = [];
+    };
+
+    while (index < lines.length) {
+      const line = lines[index];
+      const trimmed = line.trim();
+
+      if (/^\s*\d+\.\s+/.test(line)) {
+        break;
+      }
+
+      if (trimmed.startsWith("```") || /^(#{1,3})\s+/.test(line) || isMarkdownTableStart(lines, index) || /^\s*[-*]\s+/.test(line)) {
+        flushItemParagraph();
+        break;
+      }
+
+      if (!trimmed) {
+        flushItemParagraph();
+        index += 1;
+        continue;
+      }
+
+      paragraph.push(trimmed);
+      index += 1;
+    }
+
+    flushItemParagraph();
+    list.append(li);
+  }
+
+  return { node: list, nextIndex: index };
+}
+
+function isMarkdownTableStart(lines, index) {
+  const current = lines[index] || "";
+  const next = lines[index + 1] || "";
+  return splitMarkdownTableRow(current).length > 1 && isMarkdownTableSeparator(next);
+}
+
+function parseMarkdownTable(lines, startIndex) {
+  const headers = splitMarkdownTableRow(lines[startIndex]);
+  const alignments = splitMarkdownTableRow(lines[startIndex + 1]).map(getTableAlignment);
+  const table = document.createElement("table");
+  const thead = document.createElement("thead");
+  const headerRow = document.createElement("tr");
+
+  for (const [index, header] of headers.entries()) {
+    const th = document.createElement("th");
+    applyTableAlignment(th, alignments[index]);
+    appendInlineMarkdown(th, header);
+    headerRow.append(th);
+  }
+
+  thead.append(headerRow);
+  table.append(thead);
+
+  const tbody = document.createElement("tbody");
+  let index = startIndex + 2;
+  while (index < lines.length && splitMarkdownTableRow(lines[index]).length > 1) {
+    const row = document.createElement("tr");
+    const cells = splitMarkdownTableRow(lines[index]);
+    for (let cellIndex = 0; cellIndex < headers.length; cellIndex += 1) {
+      const td = document.createElement("td");
+      applyTableAlignment(td, alignments[cellIndex]);
+      appendInlineMarkdown(td, cells[cellIndex] || "");
+      row.append(td);
+    }
+    tbody.append(row);
+    index += 1;
+  }
+
+  table.append(tbody);
+  const wrapper = document.createElement("div");
+  wrapper.className = "table-wrap";
+  wrapper.append(table);
+  return { node: wrapper, nextIndex: index };
+}
+
+function splitMarkdownTableRow(line) {
+  const trimmed = String(line || "").trim();
+  if (!trimmed.includes("|")) {
+    return [];
+  }
+
+  const withoutEdges = trimmed.replace(/^\|/, "").replace(/\|$/, "");
+  return withoutEdges.split("|").map((cell) => cell.trim());
+}
+
+function isMarkdownTableSeparator(line) {
+  const cells = splitMarkdownTableRow(line);
+  return cells.length > 1 && cells.every((cell) => /^:?-{3,}:?$/.test(cell.replace(/\s+/g, "")));
+}
+
+function getTableAlignment(cell) {
+  const clean = String(cell || "").replace(/\s+/g, "");
+  if (/^:-+:$/.test(clean)) {
+    return "center";
+  }
+  if (/^-+:$/.test(clean)) {
+    return "right";
+  }
+  return "";
+}
+
+function applyTableAlignment(node, alignment) {
+  if (alignment) {
+    node.style.textAlign = alignment;
+  }
 }
 
 function appendInlineMarkdown(parent, text) {
@@ -1136,6 +1430,7 @@ function updateContextStatus(prefix) {
   }
 
   const provider = getProviderLabel(settings.provider);
+  const contextLimit = settings.pageContextCharLimit.toLocaleString();
   if (!settings.includePageContext) {
     setContextStatus(`${provider}；网页上下文关闭。请求会保留最近 ${settings.contextMessageLimit} 条聊天消息。`);
     return;
@@ -1143,11 +1438,12 @@ function updateContextStatus(prefix) {
 
   if (session.pageContext) {
     const count = session.pageContext.text.length.toLocaleString();
-    setContextStatus(`${provider}；网页上下文开启。已读取约 ${count} 字符；请求保留最近 ${settings.contextMessageLimit} 条聊天消息。`);
+    const modalNote = session.pageContext.dialogText ? "；已优先保留弹窗" : "";
+    setContextStatus(`${provider}；网页上下文开启。已读取约 ${count}/${contextLimit} 字符${modalNote}；请求保留最近 ${settings.contextMessageLimit} 条聊天消息。`);
     return;
   }
 
-  setContextStatus(`${provider}；网页上下文开启。发送前会读取当前页；请求保留最近 ${settings.contextMessageLimit} 条聊天消息。`);
+  setContextStatus(`${provider}；网页上下文开启。发送前会读取当前页；上限 ${contextLimit} 字符；请求保留最近 ${settings.contextMessageLimit} 条聊天消息。`);
 }
 
 function setContextStatus(text) {

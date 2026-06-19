@@ -78,6 +78,21 @@
         </label>
 
         <label>
+          <span>网页上下文字数上限</span>
+          <select id="pageContextLimitPreset">
+            <option value="12000">12,000 字符</option>
+            <option value="24000">24,000 字符</option>
+            <option value="48000">48,000 字符</option>
+            <option value="custom">自定义</option>
+          </select>
+        </label>
+
+        <label id="pageContextLimitCustomRow" hidden>
+          <span>自定义网页上下文字数</span>
+          <input id="pageContextLimitInput" type="number" min="4000" max="80000" step="1000" inputmode="numeric">
+        </label>
+
+        <label>
           <span>系统提示词</span>
           <textarea id="systemPromptInput" rows="5" spellcheck="false"></textarea>
         </label>

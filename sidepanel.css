@@ -373,7 +373,8 @@ h1 {
 .bubble.markdown ul,
 .bubble.markdown ol,
 .bubble.markdown blockquote,
-.bubble.markdown pre {
+.bubble.markdown pre,
+.bubble.markdown .table-wrap {
   margin: 0 0 10px;
 }
 
@@ -398,17 +399,58 @@ h1 {
 
 .bubble.markdown ul,
 .bubble.markdown ol {
-  padding-left: 20px;
+  padding-left: 24px;
+}
+
+.bubble.markdown ol {
+  list-style-position: outside;
 }
 
 .bubble.markdown li + li {
   margin-top: 4px;
 }
 
+.bubble.markdown li > p {
+  margin: 0 0 6px;
+}
+
+.bubble.markdown li > p:last-child {
+  margin-bottom: 0;
+}
+
 .bubble.markdown blockquote {
   padding-left: 10px;
   border-left: 3px solid var(--accent);
   color: var(--muted);
+}
+
+.bubble.markdown .table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.bubble.markdown table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.bubble.markdown th,
+.bubble.markdown td {
+  min-width: 88px;
+  padding: 7px 8px;
+  border: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.bubble.markdown th {
+  background: #f0ebe1;
+  font-weight: 700;
+}
+
+.bubble.markdown tbody tr:nth-child(even) {
+  background: rgba(15, 118, 110, 0.035);
 }
 
 .bubble.markdown pre {
