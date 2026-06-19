@@ -1,5 +1,7 @@
 # Pagewise DeepSeek Sidebar
 
+一个 Chrome 扩展，AI 对话侧边栏。可以接入 LLM API，也可以读取网页内容。
+
 Chrome Manifest V3 side panel extension for chatting with DeepSeek about the current page.
 
 ## What it does
