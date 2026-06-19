@@ -67,9 +67,7 @@ const DEFAULT_SETTINGS = {
   pageContextCharLimit: 12000
 };
 
-const PAGE_CONTEXT_LIMIT_PRESETS = [12000, 24000, 48000];
-const MIN_PAGE_CONTEXT_CHARS = 4000;
-const MAX_PAGE_CONTEXT_CHARS = 80000;
+const PAGE_CONTEXT_LIMIT_PRESETS = [12000, 24000, 48000, 96000, 192000];
 const sessions = new Map();
 const chromeApi = globalThis.chrome;
 
@@ -94,11 +92,10 @@ const els = {
   thinkingToggle: document.querySelector("#thinkingToggle"),
   contextLimitInput: document.querySelector("#contextLimitInput"),
   pageContextLimitPreset: document.querySelector("#pageContextLimitPreset"),
-  pageContextLimitCustomRow: document.querySelector("#pageContextLimitCustomRow"),
-  pageContextLimitInput: document.querySelector("#pageContextLimitInput"),
   systemPromptInput: document.querySelector("#systemPromptInput"),
   saveSettingsButton: document.querySelector("#saveSettingsButton"),
   clearKeyButton: document.querySelector("#clearKeyButton"),
+  grantAllSitesButton: document.querySelector("#grantAllSitesButton"),
   pageContextToggle: document.querySelector("#pageContextToggle"),
   refreshPageButton: document.querySelector("#refreshPageButton"),
   newChatButton: document.querySelector("#newChatButton"),
@@ -133,7 +130,9 @@ function bindEvents() {
 
   els.saveSettingsButton.addEventListener("click", saveSettingsFromForm);
   els.clearKeyButton.addEventListener("click", clearApiKey);
-  els.pageContextLimitPreset.addEventListener("change", () => updatePageContextLimitFields(true));
+  els.grantAllSitesButton.addEventListener("click", async () => {
+    await grantAllSitesPermission().catch(showError);
+  });
 
   els.pageContextToggle.addEventListener("change", async () => {
     settings.includePageContext = els.pageContextToggle.checked;
@@ -253,10 +252,16 @@ function normalizeSettings(value) {
     thinkingEnabled: Boolean(value.thinkingEnabled),
     includePageContext: Boolean(value.includePageContext),
     contextMessageLimit: Number.isFinite(limit) ? clamp(limit, 2, 24) : DEFAULT_SETTINGS.contextMessageLimit,
-    pageContextCharLimit: Number.isFinite(pageContextLimit)
-      ? clamp(pageContextLimit, MIN_PAGE_CONTEXT_CHARS, MAX_PAGE_CONTEXT_CHARS)
-      : DEFAULT_SETTINGS.pageContextCharLimit
+    pageContextCharLimit: normalizePageContextCharLimit(pageContextLimit)
   };
+}
+
+function normalizePageContextCharLimit(value) {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_SETTINGS.pageContextCharLimit;
+  }
+
+  return PAGE_CONTEXT_LIMIT_PRESETS.find((preset) => value <= preset) || PAGE_CONTEXT_LIMIT_PRESETS.at(-1);
 }
 
 function normalizeModel(provider, model) {
@@ -279,28 +284,10 @@ function updateSettingsForm() {
   els.customChatPathInput.value = settings.customProvider.chatPath;
   els.thinkingToggle.checked = settings.thinkingEnabled;
   els.contextLimitInput.value = String(settings.contextMessageLimit);
-  els.pageContextLimitInput.value = String(settings.pageContextCharLimit);
+  els.pageContextLimitPreset.value = String(settings.pageContextCharLimit);
   els.systemPromptInput.value = settings.systemPrompt;
   els.pageContextToggle.checked = settings.includePageContext;
   updateProviderFields();
-  updatePageContextLimitFields();
-}
-
-function updatePageContextLimitFields(fromPresetChange = false) {
-  if (fromPresetChange) {
-    const isCustomPreset = els.pageContextLimitPreset.value === "custom";
-    els.pageContextLimitCustomRow.hidden = !isCustomPreset;
-    if (!isCustomPreset) {
-      els.pageContextLimitInput.value = els.pageContextLimitPreset.value;
-    }
-    return;
-  }
-
-  const limit = Number.parseInt(els.pageContextLimitInput.value, 10);
-  const selectedPreset = PAGE_CONTEXT_LIMIT_PRESETS.includes(limit) ? String(limit) : "custom";
-  els.pageContextLimitPreset.value = selectedPreset;
-  const isCustom = els.pageContextLimitPreset.value === "custom";
-  els.pageContextLimitCustomRow.hidden = !isCustom;
 }
 
 function updateProviderFields() {
@@ -333,7 +320,7 @@ async function saveSettingsFromForm() {
       thinkingEnabled: els.thinkingToggle.checked,
       includePageContext: els.pageContextToggle.checked,
       contextMessageLimit: els.contextLimitInput.value,
-      pageContextCharLimit: getPageContextLimitInputValue()
+      pageContextCharLimit: els.pageContextLimitPreset.value
     });
 
     if (settings.provider === "custom" && els.customBaseUrlInput.value.trim() && !settings.customProvider.baseUrl) {
@@ -363,20 +350,30 @@ function captureCurrentProviderFormValues() {
   };
 }
 
-function getPageContextLimitInputValue() {
-  if (els.pageContextLimitPreset.value !== "custom") {
-    return els.pageContextLimitPreset.value;
-  }
-
-  return els.pageContextLimitInput.value;
-}
-
 async function clearApiKey() {
   const provider = getProviderKey(settings.provider);
   settings.apiKeys[provider] = "";
   els.apiKeyInput.value = "";
   await persistSettings({ apiKeys: settings.apiKeys });
   updateContextStatus(`已清除本地 ${getProviderLabel(provider)} API Key。`);
+}
+
+async function grantAllSitesPermission() {
+  if (!chromeApi?.permissions) {
+    updateContextStatus("当前预览环境不支持 Chrome 权限设置。");
+    return;
+  }
+
+  const origins = ["http://*/*", "https://*/*"];
+  const hasPermission = await chromeApi.permissions.contains({ origins });
+  if (hasPermission) {
+    updateContextStatus("已允许读取所有普通网站。");
+    return;
+  }
+
+  setContextStatus("等待确认允许读取所有网站...");
+  const granted = await chromeApi.permissions.request({ origins });
+  updateContextStatus(granted ? "已允许读取所有普通网站。" : "没有授予所有网站读取权限，后续仍会按网站单独请求。");
 }
 
 async function persistSettings(partial) {

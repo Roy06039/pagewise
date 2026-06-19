@@ -3,9 +3,24 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 chrome.action.onClicked.addListener(async (tab) => {
-  if (!tab.windowId) {
+  await openSidePanel(tab?.windowId);
+});
+
+chrome.commands.onCommand.addListener(async (command, tab) => {
+  if (command !== "open-side-panel") {
     return;
   }
 
-  await chrome.sidePanel.open({ windowId: tab.windowId });
+  await openSidePanel(tab?.windowId);
 });
+
+async function openSidePanel(windowId) {
+  if (!windowId) {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    windowId = tab?.windowId;
+  }
+
+  if (windowId) {
+    await chrome.sidePanel.open({ windowId });
+  }
+}

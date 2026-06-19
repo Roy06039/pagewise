@@ -83,13 +83,9 @@
             <option value="12000">12,000 字符</option>
             <option value="24000">24,000 字符</option>
             <option value="48000">48,000 字符</option>
-            <option value="custom">自定义</option>
+            <option value="96000">96,000 字符</option>
+            <option value="192000">192,000 字符</option>
           </select>
-        </label>
-
-        <label id="pageContextLimitCustomRow" hidden>
-          <span>自定义网页上下文字数</span>
-          <input id="pageContextLimitInput" type="number" min="4000" max="80000" step="1000" inputmode="numeric">
         </label>
 
         <label>
@@ -100,6 +96,9 @@
         <div class="settings-actions">
           <button id="saveSettingsButton" type="button">保存设置</button>
           <button id="clearKeyButton" type="button">清除 Key</button>
+        </div>
+        <div class="permission-actions">
+          <button id="grantAllSitesButton" type="button">一次性允许读取所有网站</button>
         </div>
         <p class="privacy-note">API Key 仅保存在本机 Chrome 本地存储中，用于直接请求所选供应商。</p>
       </section>

@@ -23,6 +23,11 @@
   "action": {
     "default_title": "Open Pagewise"
   },
+  "commands": {
+    "open-side-panel": {
+      "description": "打开 Pagewise 侧边栏"
+    }
+  },
   "background": {
     "service_worker": "background.js",
     "type": "module"
