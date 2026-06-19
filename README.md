@@ -1,41 +1,58 @@
-# Pagewise DeepSeek Sidebar
+# Pagewise
 
-一个 Chrome 扩展，AI 对话侧边栏。可以接入 LLM API，也可以读取网页内容。
+Pagewise 是一个 Chrome 侧边栏扩展，可以接入 LLM API，并在用户允许时读取当前网页内容，让用户围绕网页内容进行对话。
 
-Chrome Manifest V3 side panel extension for chatting with DeepSeek about the current page.
+## 功能
 
-## What it does
+- 以 Chrome 右侧侧边栏形式打开。
+- 支持 DeepSeek 和 SiliconFlow 聊天补全 API。
+- 支持自定义 OpenAI 兼容供应商，可配置 Base URL、Chat path 和模型 ID。
+- API Key 仅保存在本机 Chrome 本地存储中。
+- 用户手动输入过的模型 ID 会保存为本地候选项。
+- 支持编辑系统提示词。
+- 支持设置最近保留几条聊天消息作为会话上下文。
+- 支持设置网页上下文字数上限。
+- 支持 Markdown 渲染，包括基础表格和列表。
+- 支持流式输出，生成过程中先显示纯文本，完成后再渲染 Markdown。
+- 支持展示供应商返回的思考内容；思考内容不会再次发送给模型。
+- 只有开启“读取当前网页”后才会读取页面内容。
+- 网页内容和聊天历史只保存在当前运行内存中，不持久化保存。
+- 当前标签页 URL 变化时会自动开始新会话。
+- 可以优先保留当前可见弹窗内容，适合读取模型详情、价格弹窗等页面。
+- 可以在设置中一次性授权读取所有普通网站，减少逐站点权限确认。
+- 可以在 `chrome://extensions/shortcuts` 中为侧边栏绑定快捷键。
 
-- Opens as a Chrome right side panel.
-- Supports DeepSeek and SiliconFlow chat completion APIs.
-- Supports a custom OpenAI-compatible provider with configurable Base URL and chat path.
-- Stores each provider's API Key locally with `chrome.storage.local`.
-- Saves manually entered model IDs as local suggestions for that provider.
-- Renders assistant replies as a safe Markdown subset.
-- Streams assistant replies as plain text while generating, then renders Markdown after completion.
-- Shows provider-returned reasoning content in a collapsible section when available.
-- Keeps reasoning content out of future chat context; only assistant `content` is sent back to the model.
-- Lets the user edit the system prompt.
-- Reads the active page only when the "读取当前网页" switch is on.
-- Requests permission for the current website the first time page reading is used there.
-- Keeps temporary per-tab chat context in memory.
-- Automatically starts a fresh session when the active tab URL changes.
-- Lets the user choose how many recent chat messages are sent as context.
+## 安装到 Chrome
 
-## Load in Chrome
+1. 打开 `chrome://extensions`。
+2. 开启右上角的“开发者模式”。
+3. 点击“加载已解压的扩展程序”。
+4. 选择本项目文件夹，也就是包含 `manifest.json` 的目录。
+5. 点击扩展图标即可打开 Pagewise 侧边栏。
 
-1. Open `chrome://extensions`.
-2. Enable Developer mode.
-3. Click "Load unpacked".
-4. Select this folder: `D:\royra\Documents\Browser Sidebar`.
-5. Click the extension icon to open the side panel.
+## 使用说明
 
-## Notes
+1. 打开侧边栏设置。
+2. 选择供应商，并填写自己的 API Key。
+3. 选择或填写模型 ID。
+4. 如果需要让模型参考网页内容，打开“读取当前网页”。
+5. 在输入框中针对当前网页提问。
 
-- No backend server is required.
-- API Keys are not sent anywhere except directly to the selected provider:
+## 权限与隐私
+
+- 不需要后端服务器。
+- API Key 不会提交到本仓库，也不会发送到 Pagewise 自己的服务器。
+- API Key 只会用于直接请求你选择的模型供应商：
   - DeepSeek: `https://api.deepseek.com/chat/completions`
   - SiliconFlow: `https://api.siliconflow.cn/v1/chat/completions`
-- Custom providers use the configured `{Base URL}{Chat path}` endpoint and may trigger a Chrome permission prompt for that API host.
-- The first page read on a site may trigger a Chrome permission prompt for that site's origin.
-- Chrome internal pages such as `chrome://extensions` cannot be read by extensions.
+- 自定义供应商会请求你配置的 `{Base URL}{Chat path}`。
+- 第一次读取某个网站时，Chrome 可能会弹出网站读取权限确认。
+- 也可以在设置中点击“一次性允许读取所有网站”，之后普通网站通常不再逐站点弹窗。
+- Chrome 内部页面无法读取，例如 `chrome://extensions`、Chrome 网上应用店等。
+- 网页内容、聊天内容、思考内容默认只保存在当前会话内存中，重启浏览器后不会保留。
+
+## 当前限制
+
+- 纯图片、Canvas、复杂 PDF 或 OCR 场景暂不支持稳定读取。
+- 不会读取 Chrome 内部页面或扩展商店页面。
+- 自定义供应商需要兼容 OpenAI Chat Completions 风格接口。
